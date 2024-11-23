@@ -15,7 +15,7 @@ vit2_configs = {
 
 class CountingViT(nn.Module):
 
-    def __init__(self, hidden_dim, lstm_hidden_dim, vit2_configs, num_deconv_layers):
+    def __init__(self, hidden_dim, lstm_hidden_dim, vit2_configs, num_deconv_layers=4):
         
         self.vit_extractor = ViTModel.from_pretrained("google/vit-base-patch16-384")
         self.lstm = nn.LSTM(input_size=hidden_dim, hidden_size=lstm_hidden_dim, batch_first=True)
@@ -25,8 +25,8 @@ class CountingViT(nn.Module):
                                 vit2_configs["dim_head"],
                                 vit2_configs["mlp_dim"])
         self.num_deconv_layers = num_deconv_layers
-        self.deconv_layrs = self.make_deconv_layer(num_deconv_layers, [256, 256, 256])
-        self.zero_conv = nn.Conv2d(256, 1, 1)
+        self.deconv_layrs = self.make_deconv_layer(num_deconv_layers, [256, 256, 128, 64])
+        self.zero_conv = nn.Conv2d(64, 1, 1)
 
     # reference to mmpose deconv_head
     def make_deconv_layer(self, num_layers, num_filters):
