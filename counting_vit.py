@@ -15,10 +15,10 @@ vit2_configs = {
 
 class CountingViT(nn.Module):
 
-    def __init__(self, hidden_dim, lstm_hidden_dim, vit2_configs, num_deconv_layers=4):
+    def __init__(self, lstm_hidden_dim, vit2_configs=vit2_configs, num_deconv_layers=4):
         
         self.vit_extractor = ViTModel.from_pretrained("google/vit-base-patch16-384")
-        self.lstm = nn.LSTM(input_size=hidden_dim, hidden_size=lstm_hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(input_size=768, hidden_size=lstm_hidden_dim, batch_first=True)
         self.vit2 = Transformer(vit2_configs["dim"], 
                                 vit2_configs["depth"], 
                                 vit2_configs["heads"], 
