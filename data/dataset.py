@@ -21,7 +21,7 @@ class TrackableRandomHorizontalFlip(T.RandomHorizontalFlip):
             return img
 
 class WiderFaceDataset(Dataset):
-    def __init__(self, data, labels, transform=None):
+    def __init__(self, data, labels, train=True):
         """
         Args:
             data (list/array): Your input data.
@@ -30,7 +30,7 @@ class WiderFaceDataset(Dataset):
         """
         self.data = data
         self.labels = labels
-        self.transform = transform
+        self.train = train
         ## read in coordinate here as a key value map between filename and coords
 
         ## read in filename as a list
@@ -43,7 +43,7 @@ class WiderFaceDataset(Dataset):
         # Get data and label for a given index
         img_file = self.data[idx]
         img = Image.open(img_file)
-        label = self.labels[img_file]
+        label = self.labels[idx]
         
         if self.transform:
             sample = self.transform(sample)  # Apply transform if provided
@@ -54,28 +54,33 @@ class WiderFaceDataset(Dataset):
         coords[:, 1] = label[:, 0] + (label[:, 2]-1)/2
         coords[:, 0] = label[:, 1] + (label[:, 3]-1)/2
         
-        img, coords = self.resize_and_transform_coord(img, coords)
+        img, coords = self.resize_and_transform_coord(img, coords, self.train)
         # sample: (batch, 3, H, W)
         # coordinates: [batch, seq_len, 2]
         # heatmaps: ? [batch, seq_len, 1, H, W] (TYPICALLY GENERATED ON THE FLY)
-        return sample, seq_len
+        return img, coords
 
     # resize the img to 384x384
     # transform original coord (in list?)
     # coords will be used for finding adaptive arrangement 
-    def resize_and_transform_coord(self, img, coords):
+    def resize_and_transform_coord(self, img, coords, train):
         width, height = img.size
         h_ratio = 384 / height
         w_ratio = 384 / width
-
-        transform = transforms.Compose([
-                transforms.Resize((384, 384), interpolation=transforms.InterpolationMode.LANCZOS),
-                TrackableRandomHorizontalFlip(p=0.5),
-            ])
-        img = transform(img)
-        flipped = transform.transforms[1].flipped
-        if flipped:
-            coords[:,1] = width - coords[:, 1] - 1
+        if train:
+            transform = transforms.Compose([
+                    transforms.Resize((384, 384), interpolation=transforms.InterpolationMode.LANCZOS),
+                    TrackableRandomHorizontalFlip(p=0.5),
+                ])
+            img = transform(img)
+            flipped = transform.transforms[1].flipped
+            if flipped:
+                coords[:,1] = width - coords[:, 1] - 1
+        else:
+            transform = transforms.Compose([
+                    transforms.Resize((384, 384), interpolation=transforms.InterpolationMode.LANCZOS),
+                ])
+            img = transform(img)
         coords[:,0] = np.clip(coords[:,0] * h_ratio, 0, 383) # y coord
         coords[:,1] = np.clip(coords[:,1] * w_ratio, 0, 383) # x coord
         return img, coords
@@ -85,48 +90,6 @@ class WiderFaceDataset(Dataset):
         coordinates = [item[1] for item in batch]  # List of variable-length tensors
         return images, coordinates
 
-def add_gaussians_to_images(image_size, coordinates, sigma=2):
-    """
-    Add Gaussian blobs centered at given coordinates to a sequence of black images.
-
-    Args:
-    - image_size (tuple): Size of each image (height, width).
-    - coordinates (np.ndarray): Array of shape (seq_len, 2), each row is (x, y) coordinates for Gaussian centers.
-    - sigma (float): Standard deviation of the Gaussian.
-
-    Returns:
-    - np.ndarray: A stack of images with Gaussian blobs of shape (seq_len, height, width).
-    """
-    seq_len = coordinates.shape[0]  # Number of images matches number of coordinate pairs
-    height, width = image_size
-    images = np.zeros((seq_len, height, width), dtype=np.float32)
-
-    x = np.arange(width)
-    y = np.arange(height)
-    xv, yv = np.meshgrid(x, y)  # Create a grid of x and y values
-
-    for i in range(seq_len):
-        cy, cx = coordinates[i]  # Get the center for the current Gaussian
-        gaussian = np.exp(-((xv - cx)**2 + (yv - cy)**2) / (2 * sigma**2))  # Gaussian formula
-        images[i] = gaussian  # Assign the Gaussian to the corresponding image
-
-    return images
-
-def loss():
-    # for each item in batch
-        # adaptive loss
-        # get model's output
-        # sort coordinates using the output
-        # construct heatmap
-        # do the loss and apply mask
-
-        # calculate sum of L2 between consecutive coords -- mask the L2
-    pass
-    # add up the loss
-
-    # return loss
-
-    
 
 
     
