@@ -13,8 +13,8 @@ import wandb
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
-    parser.add_argument("--train_set", default="")
-    parser.add_argument("--confg_file", default="configs/config.yaml")
+    parser.add_argument("--train_set", default="wider_face_split/wider_face_train_bbx_gt.txt")
+    parser.add_argument("--config_file", default="configs/config.yaml")
 
     return parser
 
@@ -124,11 +124,11 @@ def rearrange_coords(predicted_coords, coords):
         for i in range(seq_len):
             # Compute pairwise distances between predicted_coords[:, i, :] and all coords
             distances = torch.norm(
-                coords.unsqueeze(2) - predicted_coords[:, i].unsqueeze(1), dim=-1
+                coords - predicted_coords[:, i].unsqueeze(1), dim=-1
             )  # Shape: (batch_size, seq_len, seq_len)
 
             # Mask already selected indices
-            distances.masked_fill_(used_indices.unsqueeze(1), float('inf'))
+            distances.masked_fill_(used_indices, float('inf'))
 
             # Find the minimum distances and corresponding indices
             min_indices = torch.argmin(distances, dim=1)  # Shape: (batch_size,)
@@ -155,20 +155,25 @@ def path_length_loss(predicted_coords, seq_lens):
     """
     # Compute the pairwise differences between consecutive coordinates
     deltas = predicted_coords[:, 1:] - predicted_coords[:, :-1]  # (batch, max_seq_len-1, 2)
-    
+    print(deltas)
     # Compute the Euclidean distance for each consecutive pair
     distances = torch.norm(deltas, dim=-1)  # (batch, max_seq_len-1)
     
     # Mask the distances based on seq_lens to ignore invalid points
     batch_size, max_seq_len = predicted_coords.size(0), predicted_coords.size(1)
     mask = torch.arange(max_seq_len - 1).expand(batch_size, -1).to(seq_lens.device) < (seq_lens - 1).unsqueeze(1)
+    #print(mask)
     masked_distances = distances * mask  # (batch, max_seq_len-1)
     
     # Compute the sum of distances for each sequence and normalize by valid step count
     total_path_length = masked_distances.sum(dim=1)  # (batch,)
-    valid_steps = (seq_lens - 1).float()  # Number of valid steps per sequence
+    valid_steps = (seq_lens - 1).clamp(min=1).float()  # Number of valid steps per sequence
+
+    valid_sequences = seq_lens > 1
     avg_path_length_per_step = total_path_length / valid_steps  # (batch,)
-    
+    avg_path_length_per_step = avg_path_length_per_step[valid_sequences]
+
+    #print("avg_path_length_per_step", avg_path_length_per_step)
     # Average over the batch
     loss = avg_path_length_per_step.mean()  # Scalar
     
@@ -192,11 +197,16 @@ def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_s
 
     mse_loss = F.mse_loss(heatmaps, predicted_heatmaps, reduction='none')
     masked_mse = mse_loss * heatmap_mask
-    l2_loss = masked_mse.sum() / heatmap_mask.sum()
+    l2_loss = masked_mse.sum() / (heatmap_mask.sum() * 384 * 384)
 
     path_len_loss = path_length_loss(predicted_coords, seq_lens)
+    print("l2_loss", l2_loss)
+    #print("heatmap.su()", heatmap_mask.sum())
+    #print("path_len_loss", path_len_loss)
+    #print("predicted heatmap", predicted_heatmaps)
+    #print("heatmaps", heatmaps)
 
-    return l2_loss + path_len_loss * alpha
+    return l2_loss + path_len_loss /(384*100)
 
     
 
@@ -220,8 +230,10 @@ def train(args):
     warmup_lr = scheduler_config["warmup_lr"]
     base_lr = scheduler_config["base_lr"]
     model = CountingViT(768)
-    optimizer = Adam(model.parameters(), lr=0.001)
-    warmup_scheduler = WarmUpLR(optimizer, warmup_epochs, warmup_lr, base_lr)
+    model.cuda()
+    optimizer = Adam(model.parameters(), lr=1e-6)
+    iteration_per_epoch = len(dataloader)
+    warmup_scheduler = WarmUpLR(optimizer, warmup_epochs * iteration_per_epoch, warmup_lr, base_lr)
     cosine_scheduler = CosineAnnealingWarmRestarts(
         optimizer,
         T_0 = (config.training.epochs - warmup_epochs) * iteration_per_epoch, 
@@ -230,13 +242,17 @@ def train(args):
     )
 
     iteration = 0
-    iteration_per_epoch = len(dataloader)
 
     for epoch in range(config.training.epochs):
 
         for imgs, coords, seq_lens, max_seq_len in dataloader:
             # coords: [batch, max_seq_len, 2]
             # max_seq_len = max(seq_lens) + 1
+            print(seq_lens)
+            #print(max_seq_len)
+            #print(coords.shape[0])
+            #if torch.isnan(imgs).any() or torch.isinf(imgs).any():
+            #    print("Invalid values in input data!")
             imgs = imgs.cuda()
             coords = coords.cuda()
             seq_lens = seq_lens.cuda()
@@ -249,18 +265,22 @@ def train(args):
 
             # heatmaps is a tensor
             heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
-
+            #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")
+            #with torch.autograd.detect_anomaly():
             loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len)
             optimizer.zero_grad()
             loss.backward()
+            print("curr_lr", optimizer.param_groups[0]['lr'])
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             if epoch < warmup_epochs:
                 warmup_scheduler.step()
             else:
-                # Step cosine annealing scheduler after warm-up
+            # Step cosine annealing scheduler after warm-up
                 cosine_scheduler.step(iteration)
             wandb.log({"epoch": epoch, "iteration": iteration, "train_loss": loss})
+            print(loss)
             iteration += 1
         pass
 

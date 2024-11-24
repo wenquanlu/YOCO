@@ -42,11 +42,8 @@ class WiderFaceDataset(Dataset):
     def __getitem__(self, idx):
         # Get data and label for a given index
         img_file = self.data[idx]
-        img = Image.open(img_file)
+        img = Image.open("WIDER_train/images/" + img_file)
         label = self.labels[idx]
-        
-        if self.transform:
-            sample = self.transform(sample)  # Apply transform if provided
 
         # raw coords, label: [[xmin, ymin, width, height], ...] (seq_len, 4)
         # coords [[y, x], [y, x]...]
@@ -89,7 +86,7 @@ class WiderFaceDataset(Dataset):
         coords[:,1] = np.clip(coords[:,1] * w_ratio, 0, 383) # x coord
         return img, coords
 
-    def custom_collate_fn(batch):
+    def custom_collate_fn(self, batch):
         images = torch.stack([item[0] for item in batch])  # Images
         seq_lens = torch.tensor([len(item[1]) for item in batch], dtype=torch.long)
         max_seq_len = torch.max(seq_lens) + 1 # the termination step
