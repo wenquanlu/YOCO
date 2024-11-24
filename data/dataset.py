@@ -71,6 +71,8 @@ class WiderFaceDataset(Dataset):
             transform = transforms.Compose([
                     transforms.Resize((384, 384), interpolation=transforms.InterpolationMode.LANCZOS),
                     TrackableRandomHorizontalFlip(p=0.5),
+                    transforms.ToTensor(),  # Convert to tensor
+                    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                 ])
             img = transform(img)
             flipped = transform.transforms[1].flipped
@@ -79,6 +81,8 @@ class WiderFaceDataset(Dataset):
         else:
             transform = transforms.Compose([
                     transforms.Resize((384, 384), interpolation=transforms.InterpolationMode.LANCZOS),
+                    transforms.ToTensor(),  # Convert to tensor
+                    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                 ])
             img = transform(img)
         coords[:,0] = np.clip(coords[:,0] * h_ratio, 0, 383) # y coord
@@ -87,8 +91,14 @@ class WiderFaceDataset(Dataset):
 
     def custom_collate_fn(batch):
         images = torch.stack([item[0] for item in batch])  # Images
-        coordinates = [item[1] for item in batch]  # List of variable-length tensors
-        return images, coordinates
+        seq_lens = torch.tensor([len(item[1]) for item in batch], dtype=torch.long)
+        max_seq_len = torch.max(seq_lens) + 1 # the termination step
+        coordinates = torch.ones((len(batch), max_seq_len, 2), dtype=torch.float) * 10000  # make other ground truth far away
+        #coordinates = [item[1] for item in batch]  # List of variable-length tensors
+        for i, item in enumerate(batch):
+            seq_len = seq_lens[i]  # Current sequence length
+            coordinates[i, :seq_len, :] = torch.tensor(item[1], dtype=torch.float)  # Copy label into coordinates
+        return images, coordinates, seq_lens, max_seq_len
 
 
 

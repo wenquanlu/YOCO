@@ -8,6 +8,8 @@ from omegaconf import OmegaConf
 from counting_vit import CountingViT
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.optim import Adam
+import torch.nn.functional as F
+import wandb
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
@@ -32,51 +34,178 @@ class WarmUpLR:
         self.current_step += 1
 
 
-def add_gaussians_to_images(image_size, coordinates, sigma=2):
-    """
-    Add Gaussian blobs centered at given coordinates to a sequence of black images.
+#def add_gaussians_to_images(image_size, coordinates, sigma=2):
+#    """
+#    Add Gaussian blobs centered at given coordinates to a sequence of black images.
+#
+#    Args:
+#    - image_size (tuple): Size of each image (height, width).
+#    - coordinates (np.ndarray): Array of shape (seq_len, 2), each row is (x, y) coordinates for Gaussian centers.#
+#    - sigma (float): Standard deviation of the Gaussian.
+#
+#    Returns:
+#    - np.ndarray: A stack of images with Gaussian blobs of shape (seq_len, height, width).
+#    """
+#    seq_len = coordinates.shape[0]  # Number of images matches number of coordinate pairs
+#    height, width = image_size
+#    images = np.zeros((seq_len, height, width), dtype=np.float32)
+#
+#    x = np.arange(width)
+#    y = np.arange(height)
+#    xv, yv = np.meshgrid(x, y)  # Create a grid of x and y values
+#
+#    for i in range(seq_len):
+#        cy, cx = coordinates[i]  # Get the center for the current Gaussian
+#        gaussian = np.exp(-((xv - cx)**2 + (yv - cy)**2) / (2 * sigma**2))  # Gaussian formula
+#        images[i] = gaussian  # Assign the Gaussian to the corresponding image
+#
+#    return images
 
-    Args:
-    - image_size (tuple): Size of each image (height, width).
-    - coordinates (np.ndarray): Array of shape (seq_len, 2), each row is (x, y) coordinates for Gaussian centers.
-    - sigma (float): Standard deviation of the Gaussian.
-
-    Returns:
-    - np.ndarray: A stack of images with Gaussian blobs of shape (seq_len, height, width).
-    """
-    seq_len = coordinates.shape[0]  # Number of images matches number of coordinate pairs
-    height, width = image_size
-    images = np.zeros((seq_len, height, width), dtype=np.float32)
+# coordinates: (batch, max_seq_len, H, W)
+# heatmaps: (batch, max_seq_len, H, W)
+"""def add_gaussians_to_heatmaps(heatmaps, coordinates, sigma=2):
+    
+    # Add Gaussian blobs centered at given coordinates to a sequence of black images.
+    
+    batch_size, max_seq_len, height, width = heatmaps.shape
 
     x = np.arange(width)
     y = np.arange(height)
     xv, yv = np.meshgrid(x, y)  # Create a grid of x and y values
+    for i in range(batch_size):
+        seq_len = coordinates[i].shape[0]  # Number of images matches number of coordinate pairs
+        for j in range(seq_len):
+            cy, cx = coordinates[i][j]  # Get the center for the current Gaussian
+            gaussian = np.exp(-((xv - cx)**2 + (yv - cy)**2) / (2 * sigma**2))  # Gaussian formula
+            heatmaps[i][j] = gaussian  # Assign the Gaussian to the corresponding image
+    return heatmaps
+"""
+# heatmaps: (batch, )
+# predicted_coords: ()
 
-    for i in range(seq_len):
-        cy, cx = coordinates[i]  # Get the center for the current Gaussian
-        gaussian = np.exp(-((xv - cx)**2 + (yv - cy)**2) / (2 * sigma**2))  # Gaussian formula
-        images[i] = gaussian  # Assign the Gaussian to the corresponding image
+def add_gaussians_to_heatmaps_batch(predicted_heatmaps, coordinates, sigma=2):
+    """
+    Add Gaussian blobs centered at given coordinates to heatmaps, parallelizing the batch.
+    
+    Parameters:
+    - predicted_heatmaps: Tensor of shape (batch, max_seq_len, H, W)
+    - coordinates: Tensor of shape (batch, max_seq_len, 2) with (y, x) coordinates
+    - sigma: Standard deviation of the Gaussian blob
+    """
+    with torch.no_grad():
+        batch_size, max_seq_len, height, width = predicted_heatmaps.shape
+        
+        # Create a grid for the image dimensions
+        y = torch.arange(height, device=predicted_heatmaps.device).view(1, 1, -1, 1)
+        x = torch.arange(width, device=predicted_heatmaps.device).view(1, 1, 1, -1)
+        
+        # Extract coordinates and reshape for broadcasting
+        cy = coordinates[..., 0].view(batch_size, max_seq_len, 1, 1)  # (batch, seq_len, 1, 1)
+        cx = coordinates[..., 1].view(batch_size, max_seq_len, 1, 1)  # (batch, seq_len, 1, 1)
+        
+        # Compute Gaussian blobs for all batches and sequences
+        gaussian = torch.exp(-((x - cx)**2 + (y - cy)**2) / (2 * sigma**2))  # (batch, seq_len, H, W)
+        
+        # ONLY IF NECESSARY !!!!!!!!!!!!!!!!! ############### @@@@@@@@@@@@@@@@@@
+        # Mask areas outside of valid sequence lengths (if needed)
+        # mask = (coordinates[..., 0] == 10000) & (coordinates[..., 1] == 10000)  # Identify these timesteps
+        # heatmaps[mask] = 0  # Explicitly set them to black
 
-    return images
+    return gaussian
 
-def compute_loss():
-    # for each item in batch
-        # adaptive loss
-        # get model's output
-        # sort coordinates using the output
-        # construct heatmap
-        # do the loss and apply mask
 
-        # calculate sum of L2 between consecutive coords -- mask the L2
-    pass
-    # add up the loss
+def rearrange_coords(predicted_coords, coords):
+    with torch.no_grad():
+        batch_size, seq_len, _ = predicted_coords.shape
+        rearranged_coords = torch.zeros_like(coords)
+        
+        used_indices = torch.zeros((batch_size, seq_len), dtype=torch.bool, device=coords.device)
 
-    # return loss
+        for i in range(seq_len):
+            # Compute pairwise distances between predicted_coords[:, i, :] and all coords
+            distances = torch.norm(
+                coords.unsqueeze(2) - predicted_coords[:, i].unsqueeze(1), dim=-1
+            )  # Shape: (batch_size, seq_len, seq_len)
+
+            # Mask already selected indices
+            distances.masked_fill_(used_indices.unsqueeze(1), float('inf'))
+
+            # Find the minimum distances and corresponding indices
+            min_indices = torch.argmin(distances, dim=1)  # Shape: (batch_size,)
+
+            # Rearrange coordinates for this step
+            rearranged_coords[:, i] = coords[torch.arange(batch_size, device=coords.device), min_indices]
+            
+            # Mark the selected indices as used
+            used_indices[torch.arange(batch_size, device=coords.device), min_indices] = True
+
+        return rearranged_coords
+
+
+def path_length_loss(predicted_coords, seq_lens):
+    """
+    Calculate the average path length per step for a batch of sequences.
+    
+    Args:
+        predicted_coords: Tensor of shape (batch, max_seq_len, 2), predicted (x, y) coordinates.
+        seq_lens: Tensor of shape (batch,), actual number of points in each sequence.
+
+    Returns:
+        Scalar loss representing the average path length per step across the batch.
+    """
+    # Compute the pairwise differences between consecutive coordinates
+    deltas = predicted_coords[:, 1:] - predicted_coords[:, :-1]  # (batch, max_seq_len-1, 2)
+    
+    # Compute the Euclidean distance for each consecutive pair
+    distances = torch.norm(deltas, dim=-1)  # (batch, max_seq_len-1)
+    
+    # Mask the distances based on seq_lens to ignore invalid points
+    batch_size, max_seq_len = predicted_coords.size(0), predicted_coords.size(1)
+    mask = torch.arange(max_seq_len - 1).expand(batch_size, -1).to(seq_lens.device) < (seq_lens - 1).unsqueeze(1)
+    masked_distances = distances * mask  # (batch, max_seq_len-1)
+    
+    # Compute the sum of distances for each sequence and normalize by valid step count
+    total_path_length = masked_distances.sum(dim=1)  # (batch,)
+    valid_steps = (seq_lens - 1).float()  # Number of valid steps per sequence
+    avg_path_length_per_step = total_path_length / valid_steps  # (batch,)
+    
+    # Average over the batch
+    loss = avg_path_length_per_step.mean()  # Scalar
+    
+    return loss
+
+# heatmaps (batch, max_seq_len, H, W)
+# predicted_heatmap (batch, max_seq_len, H, W)
+# predicted_coords (batch, max_seq_len, 2)
+# coords (batch, max_seq_len, 2)
+def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len, alpha=0.1):
+
+    # Create a range of sequence indices
+    seq_indices = torch.arange(max_seq_len, device=seq_lens.device)
+
+    # Compare seq_indices with seq_lens expanded to (batch_size, max_seq_len)
+    # <= because we also supervise for the last heatmap - the termination, empty heatmap
+    heatmap_mask = (seq_indices.unsqueeze(0) <= seq_lens.unsqueeze(1)).int()
+
+    # Expand to the desired shape (batch, max_seq_len, 1, 1)
+    heatmap_mask = heatmap_mask.unsqueeze(-1).unsqueeze(-1)
+
+    mse_loss = F.mse_loss(heatmaps, predicted_heatmaps, reduction='none')
+    masked_mse = mse_loss * heatmap_mask
+    l2_loss = masked_mse.sum() / heatmap_mask.sum()
+
+    path_len_loss = path_length_loss(predicted_coords, seq_lens)
+
+    return l2_loss + path_len_loss * alpha
 
     
 
 def train(args):
     config = OmegaConf.load(args.config_file)
+    wandb.init(
+        project="yoco",  # Replace with your project name
+        config={}
+    )
     data, labels = parse_dataset(args.train_set)
     train_dataset = WiderFaceDataset(data, labels)
 
@@ -104,10 +233,24 @@ def train(args):
     iteration_per_epoch = len(dataloader)
 
     for epoch in range(config.training.epochs):
-        for imgs, coords in dataloader:
-            ## TODO     
-            heatmaps, predicted_coords = model(imgs)
-            loss = compute_loss(heatmaps, predicted_coords, coords)
+
+        for imgs, coords, seq_lens, max_seq_len in dataloader:
+            # coords: [batch, max_seq_len, 2]
+            # max_seq_len = max(seq_lens) + 1
+            imgs = imgs.cuda()
+            coords = coords.cuda()
+            seq_lens = seq_lens.cuda()
+            max_seq_len = max_seq_len.cuda()
+
+            ## TODO
+            predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
+            # we need to sort coords here!!!!!!!!!!!!
+            coords = rearrange_coords(predicted_coords, coords)
+
+            # heatmaps is a tensor
+            heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
+
+            loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -117,6 +260,7 @@ def train(args):
             else:
                 # Step cosine annealing scheduler after warm-up
                 cosine_scheduler.step(iteration)
+            wandb.log({"epoch": epoch, "iteration": iteration, "train_loss": loss})
             iteration += 1
         pass
 

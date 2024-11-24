@@ -108,13 +108,14 @@ class CountingViT(nn.Module):
             hid = self.vit2(x[i]) 
             hid = hid.reshape(batch_size, 24, 24, 768)
             hid = hid.permute(0, 3, 1, 2)
-            hid = self.deconv_layrs(hid)
-            hid = self.zero_conv(hid)
+            hid = self.deconv_layrs(hid) 
+            hid = self.zero_conv(hid) # (batch, 1, 384, 384)
             heatmaps.append(hid)
             coord = self.soft_argmax_2d(hid)
             coords.append(coord)
         
-        heatmaps = torch.stack(heatmaps, dim = 0)
+        heatmaps = torch.stack(heatmaps, dim = 0) #heatmaps (seq_len, batch, 1, 384, 384)
         coords = torch.stack(coords, dim = 0) # coords (seq_len, batch_size, 2)
         coords = coords.permute(1, 0, 2)
+        heatmaps = heatmaps.permute(1, 0, 2, 3, 4).squeeze() # (batch, seq_len, H, W)
         return heatmaps, coords
