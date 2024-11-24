@@ -79,8 +79,8 @@ class CountingViT(nn.Module):
     
     def forward(self, x, seq_len):
         batch_size = x.shape[0]
-        if torch.isnan(x).any() or torch.isinf(x).any():
-            print("nan!!!!!!!4")
+        #if torch.isnan(x).any() or torch.isinf(x).any():
+        #    print("nan!!!!!!!4")
         #for name, param in self.named_parameters():
         #    if torch.any(torch.isnan(param)):
         #        print(f"NaN found in {name}")
@@ -88,8 +88,8 @@ class CountingViT(nn.Module):
         #        print(f"Inf found in {name}")
 
         x = self.vit_extractor(x).last_hidden_state
-        if torch.isnan(x).any() or torch.isinf(x).any():
-            print("nan!!!!!!!3")
+        #if torch.isnan(x).any() or torch.isinf(x).any():
+        #    print("nan!!!!!!!3")
         x = x[:, 1:, :] # exclude the CLS token ## x: (Batch, patch_num, dim)
         
         x = x.permute(1, 0, 2) # x: (patch_num, batch, dim)
@@ -97,8 +97,8 @@ class CountingViT(nn.Module):
         x = x.unsqueeze(2) # x: (patch_num, batch, 1, dim)
 
         x = x.expand(-1, -1, seq_len, -1) # x: (patch_num, batch, seq_len, dim)
-        if torch.isnan(x).any() or torch.isinf(x).any():
-            print("nan!!!!!!!2")
+        #if torch.isnan(x).any() or torch.isinf(x).any():
+        #    print("nan!!!!!!!2")
         p, b, s, d = x.shape
         ## memory heavy version
         #x = x.view(p * b, s, d)
@@ -113,8 +113,8 @@ class CountingViT(nn.Module):
         x = torch.stack(lstm_out, dim = 0) # x: (patch_num, batch, seq_len, dim)
 
         x = x.permute(2, 1, 0, 3) # x: (seq_len, batch, patch_num, dim)
-        if torch.isnan(x).any() or torch.isinf(x).any():
-            print("nan!!!!!!!")
+        #if torch.isnan(x).any() or torch.isinf(x).any():
+        #    print("nan!!!!!!!")
         heatmaps = []
         coords = []
         for i in range(s):

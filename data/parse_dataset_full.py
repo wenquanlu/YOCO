@@ -1,7 +1,7 @@
 import numpy as np
 
 def parse_dataset(dataset_path="/Users/luwenquan/Downloads/wider_face_split/wider_face_train_bbx_gt.txt"):
-    threshold = 50
+    threshold = 30
     inspect = 0
     img_count = 0
     #annotations = {}
@@ -24,14 +24,13 @@ def parse_dataset(dataset_path="/Users/luwenquan/Downloads/wider_face_split/wide
                 read_line_num = True
                 #print(line == "0--Parade/0_Parade_Parade_0_452.jpg")
                 #print(line, "!!!")
-                curr_file = line
-                #data.append(line)
+                #curr_file = line
+                data.append(line)
                 img_count += 1
                 continue
             if read_line_num:
                 line_num = int(line)
-                if line_num <= threshold:
-                    data.append(curr_file)
+                if line_num < threshold:
                     inspect += 1
                 this_len = line_num
                 read_line_num = False
@@ -49,8 +48,7 @@ def parse_dataset(dataset_path="/Users/luwenquan/Downloads/wider_face_split/wide
                 #annotations.setdefault(curr_file, []).append(anno_numbers)
                 if counter == this_len:
                     counter = 0
-                    if this_len <= threshold:
-                        labels.append(np.array(curr_label))
+                    labels.append(np.array(curr_label))
                     curr_label = []
                     read_file = True
                 continue
