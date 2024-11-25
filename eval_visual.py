@@ -34,9 +34,12 @@ def eval(args):
     model.eval()
     #i = 0
     counter = 0
+    stop = False
     for imgs, coords, seq_lens, max_seq_len in dataloader:
         #if i == args.num_file:
         #    break
+        if stop:
+            break
         imgs = imgs.cuda()
         coords = coords.cuda()
         seq_lens = seq_lens.cuda()
@@ -54,6 +57,7 @@ def eval(args):
             for k in range(predicted_heatmaps.shape[0]): # batch loop
                 print(counter)
                 if counter == args.num_file:
+                    stop = True
                     break
                 image_tensor = imgs[k]
                 
@@ -74,6 +78,7 @@ def eval(args):
 
                 for j in range(predicted_heatmaps.shape[1]):
                     heatmap = predicted_heatmaps[k][j].numpy()
+                    print("max", np.max(heatmap))
                     grayscale_heatmap = Image.fromarray(heatmap, mode='L')
                     grayscale_heatmap.save("results/{}_{}_heatmap.jpg".format(counter, sub_counter))
 
