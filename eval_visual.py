@@ -52,6 +52,7 @@ def eval(args):
             imgs = imgs * std + mean
 
             for k in range(predicted_heatmaps.shape[0]): # batch loop
+                print(counter)
                 if counter == args.num_file:
                     break
                 image_tensor = imgs[k]
