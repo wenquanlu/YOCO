@@ -5,7 +5,7 @@ from data.parse_dataset import parse_dataset
 import argparse
 from torch.utils.data import DataLoader
 from omegaconf import OmegaConf
-from counting_vit import CountingViT
+from counting_vit_cnn import CountingViTCNN
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.optim import Adam
 import torch.nn.functional as F
@@ -229,7 +229,7 @@ def train(args):
     warmup_epochs = scheduler_config["warmup_epochs"]
     warmup_lr = scheduler_config["warmup_lr"]
     base_lr = scheduler_config["base_lr"]
-    model = CountingViT(768)
+    model = CountingViTCNN(768)
     model.cuda()
     optimizer = Adam(model.parameters(), lr=1e-6)
     iteration_per_epoch = len(dataloader)
