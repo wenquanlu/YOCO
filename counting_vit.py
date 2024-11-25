@@ -27,6 +27,7 @@ class CountingViT(nn.Module):
         self.num_deconv_layers = num_deconv_layers
         self.deconv_layrs = self.make_deconv_layer(num_deconv_layers, [256, 256, 128, 64])
         self.zero_conv = nn.Conv2d(64, 1, 1)
+        self.pos_embedding = nn.Parameter(torch.randn(1, 576, 768))
 
     # reference to mmpose deconv_head
     def make_deconv_layer(self, num_layers, num_filters):
@@ -118,7 +119,8 @@ class CountingViT(nn.Module):
         heatmaps = []
         coords = []
         for i in range(s):
-            hid = self.vit2(x[i]) 
+            hid = x[i] + self.pod_embedding 
+            hid = self.vit2(hid) 
             hid = hid.reshape(batch_size, 24, 24, 768)
             hid = hid.permute(0, 3, 1, 2)
             hid = self.deconv_layrs(hid) 
@@ -132,3 +134,4 @@ class CountingViT(nn.Module):
         coords = coords.permute(1, 0, 2)
         heatmaps = heatmaps.permute(1, 0, 2, 3) # (batch, seq_len, H, W)
         return heatmaps, coords
+
