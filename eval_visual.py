@@ -55,7 +55,8 @@ def eval(args):
 
             for k in range(predicted_heatmaps.shape[0]): # batch loop
                 print(counter)
-                if counter == args.num_file:
+                if counter >= args.num_file:
+                    print("stop!!!!!!!!!!!!")
                     stop = True
                     return
                 image_tensor = imgs[k]
@@ -81,6 +82,7 @@ def eval(args):
                     heatmap = heatmap.astype(np.uint8)
                     grayscale_heatmap = Image.fromarray(heatmap, mode='L')
                     grayscale_heatmap.save("results/{}_{}_heatmap.jpg".format(counter, sub_counter))
+                    sub_counter += 1
 
                 counter += 1
 
