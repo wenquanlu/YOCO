@@ -71,7 +71,7 @@ def eval(args):
 
                 sub_counter = 0
 
-                for j in len(predicted_heatmaps.shape[1]):
+                for j in range(predicted_heatmaps.shape[1]):
                     heatmap = predicted_heatmaps[k][j].numpy()
                     grayscale_heatmap = Image.fromarray(heatmap, mode='L')
                     grayscale_heatmap.save("results/{}_{}_heatmap.jpg".format(counter, sub_counter))
