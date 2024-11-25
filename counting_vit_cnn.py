@@ -16,15 +16,15 @@ class CountingViTCNN(nn.Module):
         self.deconv_layrs = self.make_deconv_layer(num_deconv_layers, [256, 256, 128, 64])
         self.zero_conv = nn.Conv2d(64, 1, 1)
         self.pos_embedding = nn.Parameter(torch.randn(1, 576, 768))
-        self.conv1 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1),
-        self.bn1 = nn.BatchNorm2d(768),  # Batch normalization for convolutional layer
-        self.relu = nn.ReLU(inplace=True),
-        self.conv2 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1),
-        self.bn2 = nn.BatchNorm2d(768),  # Batch normalization for convolutional layer
-        self.conv3 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1),
-        self.bn3 = nn.BatchNorm2d(768),  # Batch normalization for convolutional layer
-        self.conv4 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1),
-        self.bn4 = nn.BatchNorm2d(768),  # Batch normalization for convolutional layer
+        self.conv1 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(768)  # Batch normalization for convolutional layer
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(768)  # Batch normalization for convolutional layer
+        self.conv3 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(768)  # Batch normalization for convolutional layer
+        self.conv4 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1)
+        self.bn4 = nn.BatchNorm2d(768)  # Batch normalization for convolutional layer
 
 
     # reference to mmpose deconv_head
