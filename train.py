@@ -199,14 +199,14 @@ def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_s
     masked_mse = mse_loss * heatmap_mask
     l2_loss = masked_mse.sum() / (heatmap_mask.sum() * 384 * 384)
 
-    path_len_loss = path_length_loss(predicted_coords, seq_lens)
+    #path_len_loss = path_length_loss(predicted_coords, seq_lens)
     print("l2_loss", l2_loss)
     #print("heatmap.su()", heatmap_mask.sum())
     #print("path_len_loss", path_len_loss)
     #print("predicted heatmap", predicted_heatmaps)
     #print("heatmaps", heatmaps)
 
-    return l2_loss + path_len_loss /(384*100)
+    return l2_loss #+ path_len_loss /(384*100)
 
     
 
@@ -262,7 +262,8 @@ def train(args):
             predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
             # we need to sort coords here!!!!!!!!!!!!
             coords = rearrange_coords(predicted_coords, coords)
-
+            print("predicted_coords", predicted_coords)
+            print("coords", coords)
             # heatmaps is a tensor
             heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
             #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")
@@ -282,6 +283,7 @@ def train(args):
             wandb.log({"epoch": epoch, "iteration": iteration, "train_loss": loss})
             print(loss)
             iteration += 1
+        torch.save(model.state_dict(), 'model_state_{}.pth'.format(epoch))
         pass
 
 

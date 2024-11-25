@@ -67,6 +67,22 @@ class CountingViTCNN(nn.Module):
         soft_argmax_coords = torch.stack([y_soft_argmax, x_soft_argmax], dim=1)  # Shape (B, 2)
         return soft_argmax_coords
 
+    def hard_argmax_2d(self, heatmap):
+        # Get the shape
+        B, H, W = heatmap.shape
+    
+        # Flatten the heatmap and find the indices of the max values
+        heatmap_flat = heatmap.view(B, -1)  # Flatten to (B, H*W)
+        max_indices = torch.argmax(heatmap_flat, dim=-1)  # Shape (B,)
+    
+        # Convert the flat indices back to 2D coordinates
+        y_coords = max_indices // W  # Integer division to get the row index
+        x_coords = max_indices % W   # Modulus to get the column index
+    
+        # Combine x and y coordinates
+        hard_argmax_coords = torch.stack([y_coords, x_coords], dim=1)  # Shape (B, 2)
+        return hard_argmax_coords
+
     def make_stop_mlp(self):
         in_dim = 24 * (2 ** self.num_deconv_layers)
         layers = []
@@ -146,7 +162,7 @@ class CountingViTCNN(nn.Module):
             hid = self.deconv_layrs(hid) 
             hid = self.zero_conv(hid).squeeze(1) # (batch, 384, 384)
             heatmaps.append(hid)
-            coord = self.soft_argmax_2d(hid)
+            coord = self.hard_argmax_2d(hid)
             coords.append(coord)
         
         heatmaps = torch.stack(heatmaps, dim = 0) #heatmaps (seq_len, batch, 384, 384)
