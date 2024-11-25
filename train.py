@@ -104,7 +104,7 @@ def add_gaussians_to_heatmaps_batch(predicted_heatmaps, coordinates, sigma=2):
         cx = coordinates[..., 1].view(batch_size, max_seq_len, 1, 1)  # (batch, seq_len, 1, 1)
         
         # Compute Gaussian blobs for all batches and sequences
-        gaussian = torch.exp(-((x - cx)**2 + (y - cy)**2) / (2 * sigma**2))  # (batch, seq_len, H, W)
+        gaussian = 100 * torch.exp(-((x - cx)**2 + (y - cy)**2) / (2 * sigma**2))  # (batch, seq_len, H, W)
         
         # ONLY IF NECESSARY !!!!!!!!!!!!!!!!! ############### @@@@@@@@@@@@@@@@@@
         # Mask areas outside of valid sequence lengths (if needed)
@@ -199,14 +199,14 @@ def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_s
     masked_mse = mse_loss * heatmap_mask
     l2_loss = masked_mse.sum() / (heatmap_mask.sum() * 384 * 384)
 
-    path_len_loss = path_length_loss(predicted_coords, seq_lens)
+    #path_len_loss = path_length_loss(predicted_coords, seq_lens)
     print("l2_loss", l2_loss)
     #print("heatmap.su()", heatmap_mask.sum())
     #print("path_len_loss", path_len_loss)
     #print("predicted heatmap", predicted_heatmaps)
     #print("heatmaps", heatmaps)
 
-    return l2_loss + path_len_loss /(384*100)
+    return l2_loss #+ path_len_loss /(384*100)
 
     
 
@@ -260,12 +260,16 @@ def train(args):
 
             ## TODO
             predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
+            print("predicted_coords", predicted_coords)
+            #print(predicted_heatmaps)
             # we need to sort coords here!!!!!!!!!!!!
             coords = rearrange_coords(predicted_coords, coords)
-
+            print("coords", coords)
             # heatmaps is a tensor
             heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
             #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")
+            #print("heatmaps", heatmaps)
+            #print(heatmaps.tolist())
             #with torch.autograd.detect_anomaly():
             loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len)
             optimizer.zero_grad()

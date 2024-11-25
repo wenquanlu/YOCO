@@ -42,6 +42,7 @@ class WiderFaceDataset(Dataset):
     def __getitem__(self, idx):
         # Get data and label for a given index
         img_file = self.data[idx]
+        #print(img_file)
         img = Image.open("WIDER_train/images/" + img_file)
         label = self.labels[idx]
 
@@ -73,6 +74,7 @@ class WiderFaceDataset(Dataset):
                 ])
             img = transform(img)
             flipped = transform.transforms[1].flipped
+            #print("flipped", flipped)
             if flipped:
                 coords[:,1] = width - coords[:, 1] - 1
         else:

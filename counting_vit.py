@@ -27,6 +27,7 @@ class CountingViT(nn.Module):
         self.num_deconv_layers = num_deconv_layers
         self.deconv_layrs = self.make_deconv_layer(num_deconv_layers, [256, 256, 128, 64])
         self.zero_conv = nn.Conv2d(64, 1, 1)
+        self.pos_embedding = nn.Parameter(torch.randn(1, 576, 768))
 
     # reference to mmpose deconv_head
     def make_deconv_layer(self, num_layers, num_filters):
@@ -67,6 +68,21 @@ class CountingViT(nn.Module):
         # Combine x and y coordinates
         soft_argmax_coords = torch.stack([y_soft_argmax, x_soft_argmax], dim=1)  # Shape (B, 2)
         return soft_argmax_coords
+    def hard_argmax_2d(self, heatmap):
+        # Get the shape
+        B, H, W = heatmap.shape
+    
+        # Flatten the heatmap and find the indices of the max values
+        heatmap_flat = heatmap.view(B, -1)  # Flatten to (B, H*W)
+        max_indices = torch.argmax(heatmap_flat, dim=-1)  # Shape (B,)
+    
+        # Convert the flat indices back to 2D coordinates
+        y_coords = max_indices // W  # Integer division to get the row index
+        x_coords = max_indices % W   # Modulus to get the column index
+    
+        # Combine x and y coordinates
+        hard_argmax_coords = torch.stack([y_coords, x_coords], dim=1)  # Shape (B, 2)
+        return hard_argmax_coords
 
     def make_stop_mlp(self):
         in_dim = 24 * (2 ** self.num_deconv_layers)
@@ -118,13 +134,14 @@ class CountingViT(nn.Module):
         heatmaps = []
         coords = []
         for i in range(s):
-            hid = self.vit2(x[i]) 
+            hid = x[i] + self.pos_embedding
+            hid = self.vit2(hid) 
             hid = hid.reshape(batch_size, 24, 24, 768)
             hid = hid.permute(0, 3, 1, 2)
             hid = self.deconv_layrs(hid) 
             hid = self.zero_conv(hid).squeeze(1) # (batch, 384, 384)
             heatmaps.append(hid)
-            coord = self.soft_argmax_2d(hid)
+            coord = self.hard_argmax_2d(hid)
             coords.append(coord)
         
         heatmaps = torch.stack(heatmaps, dim = 0) #heatmaps (seq_len, batch, 384, 384)

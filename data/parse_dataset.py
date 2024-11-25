@@ -1,13 +1,13 @@
 import numpy as np
 
 def parse_dataset(dataset_path="/Users/luwenquan/Downloads/wider_face_split/wider_face_train_bbx_gt.txt"):
-    threshold = 50
+    threshold = 30
     inspect = 0
     img_count = 0
     #annotations = {}
     data = []
     labels = []
-    #curr_file = ""
+    curr_file = ""
     curr_label = []
     with open(dataset_path, 'r') as f:
         lines = f.readlines()
@@ -30,27 +30,29 @@ def parse_dataset(dataset_path="/Users/luwenquan/Downloads/wider_face_split/wide
                 continue
             if read_line_num:
                 line_num = int(line)
-                if line_num <= threshold:
-                    data.append(curr_file)
+                if line_num < threshold:
                     inspect += 1
                 this_len = line_num
                 read_line_num = False
                 continue
             if this_len == 0:
                 #annotations[curr_file] = []
-                labels.append(np.array(curr_label))
+                #labels.append(np.array(curr_label))
                 curr_label = []
                 read_file = True
                 continue
             if counter < this_len:
                 counter += 1
                 anno_numbers = [int(i) for i in line.split()[:4]]
-                curr_label.append(anno_numbers)
+                #curr_label.append(anno_numbers)
+                if this_len == 1:
+                    curr_label = [anno_numbers]
+                    data.append(curr_file)
+                    labels.append(np.array(curr_label))
                 #annotations.setdefault(curr_file, []).append(anno_numbers)
                 if counter == this_len:
                     counter = 0
-                    if this_len <= threshold:
-                        labels.append(np.array(curr_label))
+                    #labels.append(np.array(curr_label))
                     curr_label = []
                     read_file = True
                 continue
