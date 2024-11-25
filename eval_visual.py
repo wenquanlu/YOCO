@@ -17,6 +17,7 @@ def get_args_parser():
     parser.add_argument("--train_set", default="wider_face_split/wider_face_train_bbx_gt.txt")
     parser.add_argument("--config_file", default="configs/config.yaml")
     parser.add_argument("--num_file", default=10)
+    parser.add_argument("--state_dict", default="")
     return parser
 
 def eval(args):
@@ -28,6 +29,7 @@ def eval(args):
                             num_workers=4, 
                             collate_fn=train_dataset.custom_collate_fn)
     model = CountingViTCNN(768)
+    model.load_state_dict(torch.load(args.state_dict))
     model.cuda()
     model.eval()
     #i = 0
@@ -75,9 +77,6 @@ def eval(args):
                     grayscale_heatmap.save("results/{}_{}_heatmap.jpg".format(counter, sub_counter))
 
                 counter += 1
-                    
-
-
 
 
 if __name__== "__main__":
