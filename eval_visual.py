@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from data.dataset import WiderFaceDataset
-from data.parse_dataset_50 import parse_dataset
+from data.parse_dataset import parse_dataset
 import argparse
 from torch.utils.data import DataLoader
 from omegaconf import OmegaConf
