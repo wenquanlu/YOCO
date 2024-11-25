@@ -46,7 +46,6 @@ def eval(args):
         max_seq_len = max_seq_len.cuda()
         with torch.no_grad():
             predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
-            predicted_heatmaps = (predicted_heatmaps * 255 / 100).clamp(0, 255).byte()
             predicted_heatmaps = predicted_heatmaps.cpu()
 
             mean = torch.tensor([0.5, 0.5, 0.5]).view(1, 3, 1, 1).cuda()  # Reshape for broadcasting
@@ -58,7 +57,7 @@ def eval(args):
                 print(counter)
                 if counter == args.num_file:
                     stop = True
-                    break
+                    return
                 image_tensor = imgs[k]
                 
                 # Clip values to [0, 1]
@@ -78,7 +77,8 @@ def eval(args):
 
                 for j in range(predicted_heatmaps.shape[1]):
                     heatmap = predicted_heatmaps[k][j].numpy()
-                    print("max", np.max(heatmap))
+                    heatmap = (heatmap - np.min(heatmap))/(np.max(heatmap) - np.min(heatmap)) * 255
+                    heatmap = heatmap.astype(np.uint8)
                     grayscale_heatmap = Image.fromarray(heatmap, mode='L')
                     grayscale_heatmap.save("results/{}_{}_heatmap.jpg".format(counter, sub_counter))
 
