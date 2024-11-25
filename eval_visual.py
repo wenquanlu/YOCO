@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from data.dataset import WiderFaceDataset
-from data.parse_dataset import parse_dataset
+from data.parse_dataset_50 import parse_dataset
 import argparse
 from torch.utils.data import DataLoader
 from omegaconf import OmegaConf
@@ -67,7 +67,7 @@ def eval(args):
 
                 # Save the image
                 image = Image.fromarray(image_array)
-                image.save(f"results/output_image_{k}.jpg")  # Save each image with a unique name
+                image.save(f"results/output_image_{counter}.jpg")  # Save each image with a unique name
 
                 sub_counter = 0
 
