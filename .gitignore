@@ -1,0 +1,9 @@
+*.pth
+slurm*
+results*/**
+results*
+YOCO3k
+wandb/**
+wider_face_split/**
+WIDER_train/**
+__pycache__/**

@@ -1,7 +1,7 @@
 import numpy as np
 
-def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
-    threshold = 30
+def parse_dataset(dataset_path="/Users/luwenquan/Downloads/wider_face_split/wider_face_train_bbx_gt.txt"):
+    threshold = 3
     inspect = 0
     img_count = 0
     #annotations = {}
@@ -24,30 +24,24 @@ def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
                 read_line_num = True
                 #print(line == "0--Parade/0_Parade_Parade_0_452.jpg")
                 #print(line, "!!!")
-                #curr_file = line
-                #print("file:", line)
-                data.append(line)
+                curr_file = line
+                #data.append(line)
                 img_count += 1
                 continue
             if read_line_num:
                 line_num = int(line)
-                if line_num < threshold:
+                if line_num == threshold:
+                    data.append(curr_file)
                     inspect += 1
                 this_len = line_num
-                #print(this_len)
                 read_line_num = False
-                if this_len == 0:
-                    read_file = True
-                    labels.append(np.array(curr_label))
-                    curr_label = []
                 continue
-            #if this_len == 0:
-            #    #annotations[curr_file] = []
-            #    print(line, "thislen0")
-            #    labels.append(np.array(curr_label))
-            #    curr_label = []
-            #    read_file = True
-            #    continue
+            if this_len == 0:
+                #annotations[curr_file] = []
+                #labels.append(np.array(curr_label))
+                curr_label = []
+                read_file = True
+                continue
             if counter < this_len:
                 counter += 1
                 anno_numbers = [int(i) for i in line.split()[:4]]
@@ -55,7 +49,8 @@ def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
                 #annotations.setdefault(curr_file, []).append(anno_numbers)
                 if counter == this_len:
                     counter = 0
-                    labels.append(np.array(curr_label))
+                    if this_len == threshold:
+                        labels.append(np.array(curr_label))
                     curr_label = []
                     read_file = True
                 continue
@@ -65,7 +60,7 @@ def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
 
 
 if __name__ == "__main__":
-    data, labels = parse_dataset()
+    data, labels = parse_dataset("wider_face_split/wider_face_train_bbx_gt.txt")
     print(len(data))
     print(len(labels))
     print(labels[:10])

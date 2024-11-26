@@ -42,7 +42,7 @@ class WiderFaceDataset(Dataset):
     def __getitem__(self, idx):
         # Get data and label for a given index
         img_file = self.data[idx]
-        img = Image.open("WIDER_train/images/" + img_file)
+        img = Image.open("YOCO3k/train//images/" + img_file)
         label = self.labels[idx]
 
         # raw coords, label: [[xmin, ymin, width, height], ...] (seq_len, 4)

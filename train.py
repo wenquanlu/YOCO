@@ -13,7 +13,7 @@ import wandb
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
-    parser.add_argument("--train_set", default="wider_face_split/wider_face_train_bbx_gt.txt")
+    parser.add_argument("--train_set", default="YOCO3k/train/labels/train.txt")
     parser.add_argument("--config_file", default="configs/config.yaml")
 
     return parser
@@ -104,7 +104,7 @@ def add_gaussians_to_heatmaps_batch(predicted_heatmaps, coordinates, sigma=2):
         cx = coordinates[..., 1].view(batch_size, max_seq_len, 1, 1)  # (batch, seq_len, 1, 1)
         
         # Compute Gaussian blobs for all batches and sequences
-        gaussian = torch.exp(-((x - cx)**2 + (y - cy)**2) / (2 * sigma**2))  # (batch, seq_len, H, W)
+        gaussian = 100 * torch.exp(-((x - cx)**2 + (y - cy)**2) / (2 * sigma**2))  # (batch, seq_len, H, W)
         
         # ONLY IF NECESSARY !!!!!!!!!!!!!!!!! ############### @@@@@@@@@@@@@@@@@@
         # Mask areas outside of valid sequence lengths (if needed)
@@ -234,16 +234,23 @@ def train(args):
     optimizer = Adam(model.parameters(), lr=1e-6)
     iteration_per_epoch = len(dataloader)
     warmup_scheduler = WarmUpLR(optimizer, warmup_epochs * iteration_per_epoch, warmup_lr, base_lr)
-    cosine_scheduler = CosineAnnealingWarmRestarts(
-        optimizer,
-        T_0 = (config.training.epochs - warmup_epochs) * iteration_per_epoch, 
-        T_mult = 1,
-        eta_min=scheduler_config["eta_min"],
-    )
+    #cosine_scheduler = CosineAnnealingWarmRestarts(
+    #    optimizer,
+    #    T_0 = (config.training.epochs - warmup_epochs) * iteration_per_epoch, 
+    #    T_mult = 1,
+    #    eta_min=scheduler_config["eta_min"],
+    #)
 
     iteration = 0
 
     for epoch in range(config.training.epochs):
+        if epoch == warmup_epochs:
+            cosine_scheduler = CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0 = (config.training.epochs - warmup_epochs) * iteration_per_epoch, 
+                T_mult = 1,
+                eta_min=scheduler_config["eta_min"],
+            )
 
         for imgs, coords, seq_lens, max_seq_len in dataloader:
             # coords: [batch, max_seq_len, 2]
@@ -280,10 +287,22 @@ def train(args):
             else:
             # Step cosine annealing scheduler after warm-up
                 cosine_scheduler.step(iteration)
-            wandb.log({"epoch": epoch, "iteration": iteration, "train_loss": loss})
+            wandb.log({"epoch": epoch, "iteration": iteration, "train_loss": loss, "LR": optimizer.param_groups[0]['lr']})
             print(loss)
             iteration += 1
-        torch.save(model.state_dict(), 'model_state_{}.pth'.format(epoch))
+        if epoch >= warmup_epochs:
+            checkpoint = {
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': cosine_scheduler.state_dict()
+            }
+        else:
+            checkpoint = {
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict()
+            }
+
+        torch.save(checkpoint, 'model_state_{}.pth'.format(epoch))
         pass
 
 
