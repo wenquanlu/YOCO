@@ -1,7 +1,7 @@
 import numpy as np
 
 def parse_dataset(dataset_path="/Users/luwenquan/Downloads/wider_face_split/wider_face_train_bbx_gt.txt"):
-    threshold = 50
+    threshold = 100
     inspect = 0
     img_count = 0
     #annotations = {}
