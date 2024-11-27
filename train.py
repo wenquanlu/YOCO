@@ -6,15 +6,18 @@ import argparse
 from torch.utils.data import DataLoader
 from omegaconf import OmegaConf
 from counting_vit_cnn import CountingViTCNN
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 import torch.nn.functional as F
 import wandb
+import random
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
     parser.add_argument("--train_set", default="YOCO3k/train/labels/train.txt")
     parser.add_argument("--config_file", default="configs/config.yaml")
+    parser.add_argument("--state_dict", default="")
+    parser.add_argument("--max_count", default=None)
 
     return parser
 
@@ -208,6 +211,23 @@ def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_s
 
     return l2_loss #+ path_len_loss /(384*100)
 
+def create_balanced_subset(max_count, data, labels):
+    baskets = [[] for _ in range(max_count)]
+
+    for i in range(len(labels)):
+        if len(labels[i]) > 0 and len(labels[i]) <= max_count:
+            baskets[len(labels[i])-1].append(i)
+    min_len = np.min([len(_) for _ in baskets])
+    
+    data_subset = []
+    labels_subset = []
+
+    for basket in baskets:
+        sample_indices = random.sample(basket,min_len)
+        for index in sample_indices:
+            data_subset.append(data[index])
+            labels_subset.append(labels[index])
+    return data_subset, labels_subset
     
 
 def train(args):
@@ -217,6 +237,8 @@ def train(args):
         config={}
     )
     data, labels = parse_dataset(args.train_set)
+    if args.max_count is not None:
+        data, labels = create_balanced_subset(args.max_count, data, labels)
     train_dataset = WiderFaceDataset(data, labels)
 
     dataloader = DataLoader(train_dataset, 
@@ -230,6 +252,8 @@ def train(args):
     warmup_lr = scheduler_config["warmup_lr"]
     base_lr = scheduler_config["base_lr"]
     model = CountingViTCNN(768)
+    if args.state_dict != "":
+        model.load_state_dict(torch.load(args.state_dict)["model_state_dict"])
     model.cuda()
     optimizer = Adam(model.parameters(), lr=1e-6)
     iteration_per_epoch = len(dataloader)
@@ -245,10 +269,9 @@ def train(args):
 
     for epoch in range(config.training.epochs):
         if epoch == warmup_epochs:
-            cosine_scheduler = CosineAnnealingWarmRestarts(
+            cosine_scheduler = CosineAnnealingLR(
                 optimizer,
-                T_0 = (config.training.epochs - warmup_epochs) * iteration_per_epoch, 
-                T_mult = 1,
+                T_max = (config.training.epochs - warmup_epochs) * iteration_per_epoch, 
                 eta_min=scheduler_config["eta_min"],
             )
 

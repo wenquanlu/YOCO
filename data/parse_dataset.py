@@ -1,14 +1,13 @@
 import numpy as np
 
-def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
-    threshold = 30
+def parse_dataset(dataset_path="wider_face_train_bbx_gt.txt"):
     inspect = 0
     img_count = 0
     #annotations = {}
     data = []
     labels = []
-    #curr_file = ""
     curr_label = []
+    f_write = open("train.txt", "w")
     with open(dataset_path, 'r') as f:
         lines = f.readlines()
         this_len = 0
@@ -24,22 +23,16 @@ def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
                 read_line_num = True
                 #print(line == "0--Parade/0_Parade_Parade_0_452.jpg")
                 #print(line, "!!!")
-                #curr_file = line
                 #print("file:", line)
                 data.append(line)
                 img_count += 1
                 continue
             if read_line_num:
                 line_num = int(line)
-                if line_num < threshold:
-                    inspect += 1
+
                 this_len = line_num
                 #print(this_len)
                 read_line_num = False
-                if this_len == 0:
-                    read_file = True
-                    labels.append(np.array(curr_label))
-                    curr_label = []
                 continue
             #if this_len == 0:
             #    #annotations[curr_file] = []
@@ -48,6 +41,11 @@ def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
             #    curr_label = []
             #    read_file = True
             #    continue
+            if this_len == 0:
+                read_file = True
+                labels.append(np.array(curr_label))
+                curr_label = []
+                continue
             if counter < this_len:
                 counter += 1
                 anno_numbers = [int(i) for i in line.split()[:4]]
@@ -61,11 +59,6 @@ def parse_dataset(dataset_path="YOCO3k/train/labels/train.txt"):
                 continue
     return data, labels
 
-
-
-
-if __name__ == "__main__":
-    data, labels = parse_dataset()
-    print(len(data))
-    print(len(labels))
-    print(labels[:10])
+data, label = parse_dataset()
+print(len(data))
+print(len(label))
