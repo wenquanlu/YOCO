@@ -1,7 +1,9 @@
 import numpy as np
 import torch
 from data.dataset import WiderFaceDataset
-from data.parse_dataset import parse_dataset
+#from data.parse_dataset import parse_dataset
+from data.parse_dataset_yoco3k import parse_dataset_yoco3k
+from data.parse_dataset_eval import parse_eval_dataset
 import argparse
 from torch.utils.data import DataLoader
 from omegaconf import OmegaConf
@@ -14,7 +16,8 @@ import random
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
-    parser.add_argument("--train_set", default="YOCO3k/train/labels/train.txt")
+    parser.add_argument("--train_set", default="wider_face_split/wider_face_train_bbx_gt.txt")
+    parser.add_argument("--val_set", default="wider_face_split/wider_face_val_bbx_gt.txt")
     parser.add_argument("--config_file", default="configs/config.yaml")
     parser.add_argument("--state_dict", default="")
     parser.add_argument("--max_count", default=None)
@@ -145,6 +148,54 @@ def rearrange_coords(predicted_coords, coords):
         return rearranged_coords
 
 
+def match_coords(predicted_coords, coords, padding_value=10000.0):
+    """
+    Match ground truth coordinates to predicted coordinates based on pairwise L2 distances,
+    while ensuring padding coordinates remain at the end.
+
+    Args:
+        predicted_coords (torch.Tensor): Tensor of shape (batch_size, seq_len, 2), predicted coordinates.
+        coords (torch.Tensor): Tensor of shape (batch_size, seq_len, 2), ground truth coordinates.
+        padding_value (float): Value used to indicate padding coordinates. Default is 10000.
+
+    Returns:
+        torch.Tensor: Rearranged ground truth coordinates, shape (batch_size, seq_len, 2).
+    """
+    with torch.no_grad():
+        predicted_coords = predicted_coords.float()
+        coords = coords.float()
+
+        batch_size, seq_len, _ = predicted_coords.shape
+        rearranged_coords = torch.full_like(coords, padding_value)
+
+        # Mask for non-padding coordinates
+        is_not_padding = (coords != padding_value).all(dim=-1)  # Shape: (batch_size, seq_len)
+
+        for b in range(batch_size):
+            # Get valid (non-padding) predicted and ground truth coordinates
+            valid_predicted = predicted_coords[b][is_not_padding[b]]
+            valid_coords = coords[b][is_not_padding[b]]
+
+            # Compute pairwise distance for valid coordinates
+            if valid_coords.shape[0] > 0:
+                distances = torch.cdist(valid_predicted.unsqueeze(0), valid_coords.unsqueeze(0), p=2).squeeze(0)
+
+                # Hungarian algorithm or Greedy match based on sorted distances
+                matched_indices = distances.view(-1).argsort()
+                assigned_pred = torch.zeros(valid_predicted.shape[0], dtype=torch.bool)
+                assigned_gt = torch.zeros(valid_coords.shape[0], dtype=torch.bool)
+
+                for idx in matched_indices:
+                    pred_idx = idx // valid_coords.shape[0]
+                    gt_idx = idx % valid_coords.shape[0]
+
+                    if not assigned_pred[pred_idx] and not assigned_gt[gt_idx]:
+                        rearranged_coords[b, pred_idx] = valid_coords[gt_idx]
+                        assigned_pred[pred_idx] = True
+                        assigned_gt[gt_idx] = True
+
+        return rearranged_coords
+
 def path_length_loss(predicted_coords, seq_lens):
     """
     Calculate the average path length per step for a batch of sequences.
@@ -233,12 +284,13 @@ def create_balanced_subset(max_count, data, labels):
 def train(args):
     config = OmegaConf.load(args.config_file)
     wandb.init(
-        project="yoco",  # Replace with your project name
+        project="yoco3k",  # Replace with your project name
         config={}
     )
-    data, labels = parse_dataset(args.train_set)
-    if args.max_count is not None:
-        data, labels = create_balanced_subset(args.max_count, data, labels)
+    data, labels = parse_dataset_yoco3k(args.train_set)
+    #if args.max_count is not None:
+    #    data, labels = create_balanced_subset(int(args.max_count), data, labels)
+    print("data_len:", len(data), "labels len:", len(labels))
     train_dataset = WiderFaceDataset(data, labels)
 
     dataloader = DataLoader(train_dataset, 
@@ -253,6 +305,7 @@ def train(args):
     base_lr = scheduler_config["base_lr"]
     model = CountingViTCNN(768)
     if args.state_dict != "":
+        print("load", args.state_dict)
         model.load_state_dict(torch.load(args.state_dict)["model_state_dict"])
     model.cuda()
     optimizer = Adam(model.parameters(), lr=1e-6)
@@ -268,10 +321,11 @@ def train(args):
     iteration = 0
 
     for epoch in range(config.training.epochs):
+        model.train()
         if epoch == warmup_epochs:
             cosine_scheduler = CosineAnnealingLR(
                 optimizer,
-                T_max = (config.training.epochs - warmup_epochs) * iteration_per_epoch, 
+                T_max = config.training.epochs * iteration_per_epoch, 
                 eta_min=scheduler_config["eta_min"],
             )
 
@@ -291,7 +345,7 @@ def train(args):
             ## TODO
             predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
             # we need to sort coords here!!!!!!!!!!!!
-            coords = rearrange_coords(predicted_coords, coords)
+            coords = match_coords(predicted_coords, coords)
             print("predicted_coords", predicted_coords)
             print("coords", coords)
             # heatmaps is a tensor
@@ -324,8 +378,36 @@ def train(args):
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict()
             }
-
-        torch.save(checkpoint, 'model_state_{}.pth'.format(epoch))
+        torch.save(checkpoint, 'run_2/model_state_{}.pth'.format(epoch))
+        ### eval
+        model.eval()
+        eval_data, eval_labels = parse_eval_dataset(args.val_set, int(args.max_count))
+        eval_data, eval_labels = create_balanced_subset(int(args.max_count), eval_data, eval_labels)
+        print("eval data", len(eval_data))
+        eval_dataset = WiderFaceDataset(eval_data, eval_labels, train=False)
+        eval_dataloader = DataLoader(eval_dataset, 
+                                batch_size=config.training.batch_size, 
+                                shuffle=False, 
+                                num_workers=4, 
+                                collate_fn=eval_dataset.custom_collate_fn)
+        losses = []
+        for imgs, coords, seq_lens, max_seq_len in eval_dataloader:
+            #if i == args.num_file:
+            #    break
+            imgs = imgs.cuda()
+            coords = coords.cuda()
+            seq_lens = seq_lens.cuda()
+            max_seq_len = max_seq_len.cuda()
+            with torch.no_grad():
+                predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
+                coords = match_coords(predicted_coords, coords)
+                # heatmaps is a tensor
+                heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
+                #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")
+                #with torch.autograd.detect_anomaly():
+                loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len).cpu()
+                losses.append(loss)
+        wandb.log({"eval_loss": np.mean(losses), "eval_data_len": len(eval_data)})
         pass
 
 

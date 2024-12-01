@@ -1,0 +1,17 @@
+
+run_2/model_state_32.pth,
+run_2/model_state_25.pth,
+run_2/model_state_27.pth,
+run_2/model_state_35.pth
+
+
+run_3/model_state_37.pth,
+run_3/model_state_42.pth,
+run_3/model_state_41.pth,
+
+
+
+
+
+python train.py --max_count=4 --state_dict=run_2/model_state_42_3.pth > log.txt
+

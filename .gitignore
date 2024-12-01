@@ -7,3 +7,12 @@ wandb/**
 wider_face_split/**
 WIDER_train/**
 __pycache__/**
+run_2/**
+run_11/**
+wandb/**
+wider_face_split/**
+WIDER_train/**
+WIDER_val/**
+YOCO3k/**
+log*
+

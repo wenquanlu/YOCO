@@ -1,3 +1,5 @@
+
+
 project:
   name: "yoco-progressive"
   wandb:
@@ -7,7 +9,7 @@ project:
 
 training:
   epochs: 50
-  batch_size: 12
+  batch_size: 32
   scheduler:
     type: "CosineAnnealingLR"  # Scheduler type
     eta_min: 1e-5                       # Minimum learning rate
@@ -19,3 +21,4 @@ logging:
   log_frequency: 100         # Log every X iterations
   checkpoint_dir: "./checkpoints"
   save_best_only: true
+
