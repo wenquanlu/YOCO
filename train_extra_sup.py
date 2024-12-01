@@ -13,7 +13,7 @@ from torch.optim import Adam
 import torch.nn.functional as F
 import wandb
 import random
-from val_data import val_data, val_labels
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
@@ -381,8 +381,10 @@ def train(args):
         torch.save(checkpoint, 'run_2/model_state_{}.pth'.format(epoch))
         ### eval
         model.eval()
-        val_labels = [np.array(_) for _ in val_labels]
-        eval_dataset = WiderFaceDataset(val_data, val_labels, train=False)
+        eval_data, eval_labels = parse_eval_dataset(args.val_set, int(args.max_count))
+        eval_data, eval_labels = create_balanced_subset(int(args.max_count), eval_data, eval_labels)
+        print("eval data", len(eval_data))
+        eval_dataset = WiderFaceDataset(eval_data, eval_labels, train=False)
         eval_dataloader = DataLoader(eval_dataset, 
                                 batch_size=config.training.batch_size, 
                                 shuffle=False, 
@@ -405,7 +407,7 @@ def train(args):
                 #with torch.autograd.detect_anomaly():
                 loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len).cpu()
                 losses.append(loss)
-        wandb.log({"eval_loss": np.mean(losses), "eval_data_len": len(val_data)})
+        wandb.log({"eval_loss": np.mean(losses), "eval_data_len": len(eval_data)})
         pass
 
 
