@@ -279,7 +279,6 @@ def create_balanced_subset(max_count, data, labels):
             data_subset.append(data[index])
             labels_subset.append(labels[index])
     return data_subset, labels_subset
-    
 
 def train(args):
     config = OmegaConf.load(args.config_file)
