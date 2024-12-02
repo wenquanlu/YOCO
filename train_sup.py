@@ -7,7 +7,7 @@ from data.parse_dataset_eval import parse_eval_dataset
 import argparse
 from torch.utils.data import DataLoader
 from omegaconf import OmegaConf
-from counting_vit_cnn import CountingViTCNN
+from counting_vit_cnn_sup import CountingViTCNNSup
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 import torch.nn.functional as F
@@ -18,11 +18,11 @@ from val_data import val_labels
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
-    parser.add_argument("--train_set", default="YOCO3k/train/labels/train.txt")
-    #parser.add_argument("--val_set", default="wider_face_split/wider_face_val_bbx_gt.txt")
+    parser.add_argument("--train_set", default="wider_face_split/wider_face_train_bbx_gt.txt")
+    parser.add_argument("--val_set", default="wider_face_split/wider_face_val_bbx_gt.txt")
     parser.add_argument("--config_file", default="configs/config.yaml")
     parser.add_argument("--state_dict", default="")
-    #parser.add_argument("--max_count", default=None)
+    parser.add_argument("--max_count", default=None)
 
     return parser
 
@@ -118,8 +118,11 @@ def add_gaussians_to_heatmaps_batch(predicted_heatmaps, coordinates, sigma=2):
         # Mask areas outside of valid sequence lengths (if needed)
         # mask = (coordinates[..., 0] == 10000) & (coordinates[..., 1] == 10000)  # Identify these timesteps
         # heatmaps[mask] = 0  # Explicitly set them to black
+        cumulative_heatmaps = torch.zeros(batch_size, max_seq_len + 1, height, width, device=predicted_heatmaps.device)
+        for t in range(max_seq_len):
+            cumulative_heatmaps[:, t + 1] = cumulative_heatmaps[:, t] + gaussian[:, t]
 
-    return gaussian
+    return gaussian, cumulative_heatmaps
 
 
 def rearrange_coords(predicted_coords, coords):
@@ -257,7 +260,7 @@ def path_length_loss(predicted_coords, seq_lens):
 # predicted_heatmap (batch, max_seq_len, H, W)
 # predicted_coords (batch, max_seq_len, 2)
 # coords (batch, max_seq_len, 2)
-def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len, alpha=0.1):
+def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, predicted_cum_heatmaps, cum_heatmaps, seq_lens, max_seq_len, alpha=0.1):
 
     # Create a range of sequence indices
     seq_indices = torch.arange(max_seq_len, device=seq_lens.device)
@@ -271,7 +274,9 @@ def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_s
 
     mse_loss = F.mse_loss(heatmaps, predicted_heatmaps, reduction='none')
     masked_mse = mse_loss * heatmap_mask
-    l2_loss = masked_mse.sum() / (heatmap_mask.sum() * 384 * 384)
+    cum_loss = F.mse_loss(cum_heatmaps, predicted_cum_heatmaps, reduction='none')
+    masked_cum_mse = cum_loss * heatmap_mask
+    l2_loss = (masked_mse.sum()+masked_cum_mse.sum()) / (2 * heatmap_mask.sum() * 384 * 384)
 
     #path_len_loss = path_length_loss(predicted_coords, seq_lens)
     print("l2_loss", l2_loss)
@@ -303,7 +308,7 @@ def create_balanced_subset(max_count, data, labels):
 def train(args):
     config = OmegaConf.load(args.config_file)
     wandb.init(
-        project="yoco3k-12",  # Replace with your project name
+        project="yoco3k",  # Replace with your project name
         config={}
     )
     data, labels = parse_dataset_yoco3k(args.train_set)
@@ -322,7 +327,7 @@ def train(args):
     warmup_epochs = scheduler_config["warmup_epochs"]
     warmup_lr = scheduler_config["warmup_lr"]
     base_lr = scheduler_config["base_lr"]
-    model = CountingViTCNN(768)
+    model = CountingViTCNNSup(768)
     if args.state_dict != "":
         print("load", args.state_dict)
         model.load_state_dict(torch.load(args.state_dict)["model_state_dict"])
@@ -362,17 +367,16 @@ def train(args):
             max_seq_len = max_seq_len.cuda()
 
             ## TODO
-            predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
+            predicted_heatmaps, predicted_coords, predicted_cum_heatmaps = model(imgs, max_seq_len)
             # we need to sort coords here!!!!!!!!!!!!
-            #coords = match_coords(predicted_coords, coords)
-            coords = sort_naive(coords)
+            coords = match_coords(predicted_coords, coords)
             print("predicted_coords", predicted_coords)
             print("coords", coords)
             # heatmaps is a tensor
-            heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
+            heatmaps, cum_heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
             #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")
             #with torch.autograd.detect_anomaly():
-            loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len)
+            loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, predicted_cum_heatmaps, cum_heatmaps, seq_lens, max_seq_len)
             optimizer.zero_grad()
             loss.backward()
             print("curr_lr", optimizer.param_groups[0]['lr'])
@@ -417,7 +421,7 @@ def train(args):
             seq_lens = seq_lens.cuda()
             max_seq_len = max_seq_len.cuda()
             with torch.no_grad():
-                predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
+                predicted_heatmaps, predicted_coords, _ = model(imgs, max_seq_len)
                 coords = match_coords(predicted_coords, coords)
                 # heatmaps is a tensor
                 heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)

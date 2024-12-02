@@ -12,7 +12,9 @@ import torch.nn.functional as F
 from PIL import Image
 from tqdm import tqdm
 from train import create_balanced_subset
-
+from val_data import val_data
+from val_data import val_labels
+from test_data import test_data, test_labels
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
@@ -80,6 +82,23 @@ def rearrange_coords(predicted_coords, coords):
 
         return rearranged_coords
 
+def sort_naive(coords):
+    with torch.no_grad():
+        coords_np = coords.cpu().numpy()
+
+        sorted_coords = []
+        for batch in coords_np:
+            # Extract x and y separately
+            x = batch[:, 1]
+            y = batch[:, 0]
+            # Use lexsort: Sort by y (primary key) and x (secondary key)
+            indices = np.lexsort((y, x))
+            sorted_coords.append(batch[indices])
+        sorted_coords = np.array(sorted_coords)
+        # Convert back to PyTorch tensor
+        sorted_coords = torch.tensor(sorted_coords, dtype=coords.dtype, device=coords.device)
+    return sorted_coords
+
 def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len, alpha=0.1):
 
     # Create a range of sequence indices
@@ -104,18 +123,66 @@ def compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_s
 
     return l2_loss #+ path_len_loss /(384*100)
 
+def match_coords(predicted_coords, coords, padding_value=10000.0):
+    """
+    Match ground truth coordinates to predicted coordinates based on pairwise L2 distances,
+    while ensuring padding coordinates remain at the end.
+
+    Args:
+        predicted_coords (torch.Tensor): Tensor of shape (batch_size, seq_len, 2), predicted coordinates.
+        coords (torch.Tensor): Tensor of shape (batch_size, seq_len, 2), ground truth coordinates.
+        padding_value (float): Value used to indicate padding coordinates. Default is 10000.
+
+    Returns:
+        torch.Tensor: Rearranged ground truth coordinates, shape (batch_size, seq_len, 2).
+    """
+    with torch.no_grad():
+        predicted_coords = predicted_coords.float()
+        coords = coords.float()
+
+        batch_size, seq_len, _ = predicted_coords.shape
+        rearranged_coords = torch.full_like(coords, padding_value)
+
+        # Mask for non-padding coordinates
+        is_not_padding = (coords != padding_value).all(dim=-1)  # Shape: (batch_size, seq_len)
+
+        for b in range(batch_size):
+            # Get valid (non-padding) predicted and ground truth coordinates
+            valid_predicted = predicted_coords[b][is_not_padding[b]]
+            valid_coords = coords[b][is_not_padding[b]]
+
+            # Compute pairwise distance for valid coordinates
+            if valid_coords.shape[0] > 0:
+                distances = torch.cdist(valid_predicted.unsqueeze(0), valid_coords.unsqueeze(0), p=2).squeeze(0)
+
+                # Hungarian algorithm or Greedy match based on sorted distances
+                matched_indices = distances.view(-1).argsort()
+                assigned_pred = torch.zeros(valid_predicted.shape[0], dtype=torch.bool)
+                assigned_gt = torch.zeros(valid_coords.shape[0], dtype=torch.bool)
+
+                for idx in matched_indices:
+                    pred_idx = idx // valid_coords.shape[0]
+                    gt_idx = idx % valid_coords.shape[0]
+
+                    if not assigned_pred[pred_idx] and not assigned_gt[gt_idx]:
+                        rearranged_coords[b, pred_idx] = valid_coords[gt_idx]
+                        assigned_pred[pred_idx] = True
+                        assigned_gt[gt_idx] = True
+
+        return rearranged_coords
 
 def eval(args):
     print(args.state_dict)
-    data, labels = parse_eval_dataset(args.val_set, int(args.max_count))
-    data, labels = create_balanced_subset(int(args.max_count), data, labels)
-    print([len(_) for _ in labels])
-    train_dataset = WiderFaceDataset(data, labels, train=False)
-    dataloader = DataLoader(train_dataset, 
-                            batch_size=32, 
+    #val_label = [np.array(_) for _ in val_labels]
+    #eval_dataset = WiderFaceDataset(val_data, val_label, train=False)
+    test_label = [np.array(_) for _ in test_labels]
+    eval_dataset = WiderFaceDataset(test_data, test_label, train=False)
+
+    dataloader = DataLoader(eval_dataset, 
+                            batch_size=16, 
                             shuffle=False, 
                             num_workers=4, 
-                            collate_fn=train_dataset.custom_collate_fn)
+                            collate_fn=eval_dataset.custom_collate_fn)
     model = CountingViTCNN(768)
     model.load_state_dict(torch.load(args.state_dict)["model_state_dict"])
     model.cuda()
@@ -131,7 +198,7 @@ def eval(args):
         max_seq_len = max_seq_len.cuda()
         with torch.no_grad():
             predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
-            coords = rearrange_coords(predicted_coords, coords)
+            coords = match_coords(predicted_coords, coords)
             # heatmaps is a tensor
             heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
             #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")

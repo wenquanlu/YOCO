@@ -1,3 +1,4 @@
+
 import numpy as np
 import torch
 from data.dataset_accuray import WiderFaceDatasetEvalAccuracy
@@ -13,7 +14,6 @@ from PIL import Image
 from tqdm import tqdm
 from train import create_balanced_subset
 from collections import defaultdict
-from test_data import test_data, test_labels
 
 
 def get_args_parser():
@@ -109,18 +109,15 @@ def rearrange_coords(predicted_coords, coords):
 
 def eval(args):
     print(args.state_dict)
-    # data, labels = parse_eval_dataset(args.val_set, int(args.max_count))
-    # data, labels = create_balanced_subset(int(args.max_count), data, labels)
-    # print([len(_) for _ in labels])
-    # train_dataset = WiderFaceDatasetEvalAccuracy(data, labels, 15)
-    test_label = [np.array(_) for _ in test_labels]
-    eval_dataset = WiderFaceDatasetEvalAccuracy(test_data, test_label, 10)
-
-    dataloader = DataLoader(eval_dataset, 
+    data, labels = parse_eval_dataset(args.val_set, int(args.max_count))
+    data, labels = create_balanced_subset(int(args.max_count), data, labels)
+    print([len(_) for _ in labels])
+    train_dataset = WiderFaceDatasetEvalAccuracy(data, labels, 15)
+    dataloader = DataLoader(train_dataset, 
                             batch_size=1, 
                             shuffle=False, 
                             num_workers=4, 
-                            collate_fn=eval_dataset.custom_collate_fn)
+                            collate_fn=train_dataset.custom_collate_fn)
     model = CountingViTCNN(768)
     model.load_state_dict(torch.load(args.state_dict)["model_state_dict"])
     model.cuda()
@@ -137,13 +134,13 @@ def eval(args):
         imgs = imgs.cuda()
         seq_lens = seq_lens.cuda()
         gt_count += seq_lens[0]
-        gt_count_by_class[int(seq_lens[0])] += seq_lens[0]
+        gt_count_by_class[seq_lens[0]] += seq_lens[0]
         with torch.no_grad():
             predicted_heatmaps, predicted_coords = model(imgs, max_seq_len)
             count = 0
             marker = np.zeros((len(bboxes[0])))
             for i in range(predicted_heatmaps.shape[1]):
-                if torch.max(predicted_heatmaps[0][i]) > 4:
+                if torch.max(predicted_heatmaps[0][i]) > 3:
                     x = predicted_coords[0][i][1]
                     y = predicted_coords[0][i][0]
                     j = 0
@@ -152,13 +149,13 @@ def eval(args):
                         if x >= xmin and x <= xmax and y >= ymin and y <= ymax:
                             if marker[j] == 0:
                                 acc += 1
-                                acc_by_class[int(seq_lens[0])] += 1
+                                acc_by_class[seq_lens[0]] += 1
                                 #print("acc!!!!!!")
                                 marker[j] = 1
                                 break
                         j += 1
                     count += 1
-        model_count_by_class[int(seq_lens[0])] += count
+                model_count_by_class[seq_lens[0]] += count
         model_count += count
 
         # print("################")
@@ -182,7 +179,7 @@ def eval(args):
     print("Precision:", overall_precision)
     print("Recall:", overall_recall)
     print("F-1 score:", 2*(overall_precision * overall_recall)/(overall_precision + overall_recall))
-    print(model_count_by_class)
+
     for key in gt_count_by_class:
         print("######################################")
         print("class: ", key)

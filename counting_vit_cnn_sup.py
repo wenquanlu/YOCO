@@ -6,17 +6,15 @@ import torch.nn.functional as F
 
 
 
-class CountingViTCNN(nn.Module):
+class CountingViTCNNSup(nn.Module):
 
     def __init__(self, lstm_hidden_dim, num_deconv_layers=4):
-        super(CountingViTCNN, self).__init__()
+        super(CountingViTCNNSup, self).__init__()
         self.vit_extractor = ViTModel.from_pretrained("google/vit-base-patch16-384")
-        # for param in self.vit_extractor.parameters():
-        #     param.requires_grad = False
         self.lstm = nn.LSTM(input_size=768, hidden_size=lstm_hidden_dim, batch_first=True)
         self.num_deconv_layers = num_deconv_layers
         self.deconv_layrs = self.make_deconv_layer(num_deconv_layers, [256, 256, 128, 64])
-        self.zero_conv = nn.Conv2d(64, 1, 1)
+        self.zero_conv = nn.Conv2d(64, 2, 1)
         self.pos_embedding = nn.Parameter(torch.randn(1, 576, 768))
         self.conv1 = nn.Conv2d(in_channels=768, out_channels=768, kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(768)  # Batch normalization for convolutional layer
@@ -133,6 +131,7 @@ class CountingViTCNN(nn.Module):
         #if torch.isnan(x).any() or torch.isinf(x).any():
         #    print("nan!!!!!!!")
         heatmaps = []
+        cum_heatmaps = []
         coords = []
         for i in range(s):
             hid = x[i].reshape(batch_size, 24, 24, 768)
@@ -162,14 +161,20 @@ class CountingViTCNN(nn.Module):
             hid = self.relu(hid)
 
             hid = self.deconv_layrs(hid) 
-            hid = self.zero_conv(hid).squeeze(1) # (batch, 384, 384)
-            heatmaps.append(hid)
-            coord = self.hard_argmax_2d(hid)
+            hid = self.zero_conv(hid) # (batch, 2, 384, 384)
+            heatmap = hid[:,0,:,:].squeeze(1)
+            cum_heatmap = hid[:,1,:,:].squeeze(1)
+            heatmaps.append(heatmap)
+            coord = self.hard_argmax_2d(heatmap)
             coords.append(coord)
-        
+            cum_heatmaps.append(cum_heatmap)
+
         heatmaps = torch.stack(heatmaps, dim = 0) #heatmaps (seq_len, batch, 384, 384)
+        cum_heatmaps = torch.stack(cum_heatmaps, dim=0) #cum_heatmaps (seq_len, batch, 384, 384)
+
         coords = torch.stack(coords, dim = 0) # coords (seq_len, batch_size, 2)
         coords = coords.permute(1, 0, 2)
         heatmaps = heatmaps.permute(1, 0, 2, 3) # (batch, seq_len, H, W)
-        return heatmaps, coords
+        cum_heatmaps = cum_heatmaps.permute(1, 0, 2, 3)
+        return heatmaps, coords, cum_heatmaps
 

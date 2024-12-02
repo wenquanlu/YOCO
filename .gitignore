@@ -15,4 +15,5 @@ WIDER_train/**
 WIDER_val/**
 YOCO3k/**
 log*
-
+sorted_same_loss.txt
+*.txt
