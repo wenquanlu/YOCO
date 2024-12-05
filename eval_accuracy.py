@@ -114,7 +114,7 @@ def eval(args):
     # print([len(_) for _ in labels])
     # train_dataset = WiderFaceDatasetEvalAccuracy(data, labels, 15)
     test_label = [np.array(_) for _ in test_labels]
-    eval_dataset = WiderFaceDatasetEvalAccuracy(test_data, test_label, 10)
+    eval_dataset = WiderFaceDatasetEvalAccuracy(test_data, test_label, 15)
 
     dataloader = DataLoader(eval_dataset, 
                             batch_size=1, 
@@ -143,7 +143,7 @@ def eval(args):
             count = 0
             marker = np.zeros((len(bboxes[0])))
             for i in range(predicted_heatmaps.shape[1]):
-                if torch.max(predicted_heatmaps[0][i]) > 4:
+                if torch.max(predicted_heatmaps[0][i]) > 4.0:
                     x = predicted_coords[0][i][1]
                     y = predicted_coords[0][i][0]
                     j = 0
@@ -158,6 +158,8 @@ def eval(args):
                                 break
                         j += 1
                     count += 1
+                # else:
+                #     break
         model_count_by_class[int(seq_lens[0])] += count
         model_count += count
 
@@ -182,6 +184,10 @@ def eval(args):
     print("Precision:", overall_precision)
     print("Recall:", overall_recall)
     print("F-1 score:", 2*(overall_precision * overall_recall)/(overall_precision + overall_recall))
+    #f = open("12_sorted_freezed_accuracy.txt", "a")
+    #f.write(args.state_dict + ":" + str(overall_precision) + ", " + str(overall_recall) + ", "+ str(2*(overall_precision * overall_recall)/(overall_precision + overall_recall)))
+    #f.write("\n")
+
     print(model_count_by_class)
     for key in gt_count_by_class:
         print("######################################")

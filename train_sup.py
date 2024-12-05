@@ -18,11 +18,11 @@ from val_data import val_labels
 
 def get_args_parser():
     parser = argparse.ArgumentParser("countingViT training")
-    parser.add_argument("--train_set", default="wider_face_split/wider_face_train_bbx_gt.txt")
-    parser.add_argument("--val_set", default="wider_face_split/wider_face_val_bbx_gt.txt")
+    parser.add_argument("--train_set", default="YOCO3k/train/labels/train.txt")
+    #parser.add_argument("--val_set", default="wider_face_split/wider_face_val_bbx_gt.txt")
     parser.add_argument("--config_file", default="configs/config.yaml")
     parser.add_argument("--state_dict", default="")
-    parser.add_argument("--max_count", default=None)
+    #parser.add_argument("--max_count", default=None)
 
     return parser
 
@@ -118,8 +118,8 @@ def add_gaussians_to_heatmaps_batch(predicted_heatmaps, coordinates, sigma=2):
         # Mask areas outside of valid sequence lengths (if needed)
         # mask = (coordinates[..., 0] == 10000) & (coordinates[..., 1] == 10000)  # Identify these timesteps
         # heatmaps[mask] = 0  # Explicitly set them to black
-        cumulative_heatmaps = torch.zeros(batch_size, max_seq_len + 1, height, width, device=predicted_heatmaps.device)
-        for t in range(max_seq_len):
+        cumulative_heatmaps = torch.zeros(batch_size, max_seq_len, height, width, device=predicted_heatmaps.device)
+        for t in range(max_seq_len-1):
             cumulative_heatmaps[:, t + 1] = cumulative_heatmaps[:, t] + gaussian[:, t]
 
     return gaussian, cumulative_heatmaps
@@ -308,7 +308,7 @@ def create_balanced_subset(max_count, data, labels):
 def train(args):
     config = OmegaConf.load(args.config_file)
     wandb.init(
-        project="yoco3k",  # Replace with your project name
+        project="yoco3k-12",  # Replace with your project name
         config={}
     )
     data, labels = parse_dataset_yoco3k(args.train_set)
@@ -369,7 +369,7 @@ def train(args):
             ## TODO
             predicted_heatmaps, predicted_coords, predicted_cum_heatmaps = model(imgs, max_seq_len)
             # we need to sort coords here!!!!!!!!!!!!
-            coords = match_coords(predicted_coords, coords)
+            coords = sort_naive(coords)
             print("predicted_coords", predicted_coords)
             print("coords", coords)
             # heatmaps is a tensor
@@ -403,34 +403,34 @@ def train(args):
                 'optimizer_state_dict': optimizer.state_dict()
             }
         torch.save(checkpoint, 'run_2/model_state_{}.pth'.format(epoch))
-        ### eval
-        model.eval()
-        val_label = [np.array(_) for _ in val_labels]
-        eval_dataset = WiderFaceDataset(val_data, val_label, train=False)
-        eval_dataloader = DataLoader(eval_dataset, 
-                                batch_size=config.training.batch_size, 
-                                shuffle=False, 
-                                num_workers=4, 
-                                collate_fn=eval_dataset.custom_collate_fn)
-        losses = []
-        for imgs, coords, seq_lens, max_seq_len in eval_dataloader:
-            #if i == args.num_file:
-            #    break
-            imgs = imgs.cuda()
-            coords = coords.cuda()
-            seq_lens = seq_lens.cuda()
-            max_seq_len = max_seq_len.cuda()
-            with torch.no_grad():
-                predicted_heatmaps, predicted_coords, _ = model(imgs, max_seq_len)
-                coords = match_coords(predicted_coords, coords)
-                # heatmaps is a tensor
-                heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
-                #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")
-                #with torch.autograd.detect_anomaly():
-                loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len).cpu()
-                losses.append(loss)
-        wandb.log({"eval_loss": np.mean(losses), "eval_data_len": len(val_data)})
-        pass
+        # ### eval
+        # model.eval()
+        # val_label = [np.array(_) for _ in val_labels]
+        # eval_dataset = WiderFaceDataset(val_data, val_label, train=False)
+        # eval_dataloader = DataLoader(eval_dataset, 
+        #                         batch_size=config.training.batch_size, 
+        #                         shuffle=False, 
+        #                         num_workers=4, 
+        #                         collate_fn=eval_dataset.custom_collate_fn)
+        # losses = []
+        # for imgs, coords, seq_lens, max_seq_len in eval_dataloader:
+        #     #if i == args.num_file:
+        #     #    break
+        #     imgs = imgs.cuda()
+        #     coords = coords.cuda()
+        #     seq_lens = seq_lens.cuda()
+        #     max_seq_len = max_seq_len.cuda()
+        #     with torch.no_grad():
+        #         predicted_heatmaps, predicted_coords, _ = model(imgs, max_seq_len)
+        #         coords = match_coords(predicted_coords, coords)
+        #         # heatmaps is a tensor
+        #         heatmaps = add_gaussians_to_heatmaps_batch(predicted_heatmaps, coords)
+        #         #print(torch.max(heatmaps), torch.min(heatmaps), "heatmaps")
+        #         #with torch.autograd.detect_anomaly():
+        #         loss = compute_loss(predicted_heatmaps, heatmaps, predicted_coords, seq_lens, max_seq_len).cpu()
+        #         losses.append(loss)
+        # wandb.log({"eval_loss": np.mean(losses), "eval_data_len": len(val_data)})
+        # pass
 
 
 if __name__== "__main__":

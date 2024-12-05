@@ -17,3 +17,8 @@ YOCO3k/**
 log*
 sorted_same_loss.txt
 *.txt
+get_img.py
+**/__pycache__/
+__pycache__/
+accuracy.sh
+
