@@ -7,7 +7,7 @@ In this work, we investigate the performance of recurrent neural networks in hum
 </figure>
 
 Our key insights are:
-1. Recurrent counting method is less efficient and less accurate than the conventional approach of regressing all counting coordinates in one forward pass.
+1. Recurrent counting method is less efficient and less accurate than the conventional approach of regressing all counting heatmap spots/coordinates in one forward pass.
 2. Defining an order of counting helps improve the performance of recurrent counting.
 3. Neural networks are yet to learn symbolic logic well, because the task can be readily transformed into an easy auto-regressive task by simply masking the counted faces.
 
