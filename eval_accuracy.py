@@ -114,7 +114,7 @@ def eval(args):
     # print([len(_) for _ in labels])
     # train_dataset = WiderFaceDatasetEvalAccuracy(data, labels, 15)
     test_label = [np.array(_) for _ in test_labels]
-    eval_dataset = WiderFaceDatasetEvalAccuracy(test_data, test_label, 15)
+    eval_dataset = WiderFaceDatasetEvalAccuracy(test_data, test_label, 10)
 
     dataloader = DataLoader(eval_dataset, 
                             batch_size=1, 

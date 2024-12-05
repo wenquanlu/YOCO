@@ -3,7 +3,7 @@
 In this work, we investigate the performance of recurrent neural networks in human face counting tasks. Our architecture combines pretrained ViT, LSTM and CNN. At each step, the same image is being input to model, and the output is a heatmap indicating the postion of **one** face currently being counted.
 
 <figure>
-<img src="figs/csci2470_arch.jpg">
+<img src="figs/main_arch.jpg">
 </figure>
 
 Our key insights are:
