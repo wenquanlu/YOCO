@@ -1,0 +1,22 @@
+project:
+  name: "yoco-progressive"
+  wandb:
+    project_name: "wandb_yoco"
+    run_name: "experiment_1"
+    entity: "csci2470"
+
+training:
+  epochs: 50
+  batch_size: 24
+  scheduler:
+    type: "CosineAnnealingLR"  # Scheduler type
+    eta_min: 1e-5                       # Minimum learning rate
+    warmup_epochs: 5                    # Number of warm-up epochs
+    warmup_lr: 1e-6                     # Learning rate at the start of warm-up
+    base_lr: 5e-5                       # Initial learning rate after warm-up
+
+logging:
+  log_frequency: 100         # Log every X iterations
+  checkpoint_dir: "./checkpoints"
+  save_best_only: true
+
