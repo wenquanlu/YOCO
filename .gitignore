@@ -21,4 +21,11 @@ get_img.py
 **/__pycache__/
 __pycache__/
 accuracy.sh
+val.txt
+train1.sh
+waster.py
+eval.sh
+commands.sh
+accuracy.sh
+test_mesh.py
 
