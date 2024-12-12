@@ -6,6 +6,7 @@ YOCO3k
 wandb/**
 wider_face_split/**
 WIDER_train/**
+weights/**
 __pycache__/**
 run_2/**
 run_11/**
@@ -31,4 +32,4 @@ test_mesh.py
 split_test_eval.py
 counting_vit.py
 testmesh.py
-
+datasets/**

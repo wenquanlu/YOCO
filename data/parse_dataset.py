@@ -59,6 +59,6 @@ def parse_dataset(dataset_path="wider_face_split/wider_face_train_bbx_gt.txt"):
                 continue
     return data, labels
 
-data, label = parse_dataset()
-print(len(data))
-print(len(label))
+# data, label = parse_dataset()
+# print(len(data))
+# print(len(label))
